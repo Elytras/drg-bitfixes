@@ -59,21 +59,25 @@
 --   anchor+21  addss xmm2,[rcx+0F8h] ... untouched, same addresses
 --
 -- ON SURVIVING A GAME UPDATE. There are no image RVAs in this file. The only address it knows
--- at runtime is ctx:address() -- where the pattern matched -- and all 14 sites are signed
--- offsets from that. (The absolute addresses in the comments are navigation aids for opening
--- the exe in a disassembler at the build this was first written against, FSD CL-150580; nothing in
--- the code reads them.) Two things then have to hold, and both fail safely:
+-- at runtime is ctx:address() -- where the pattern matched. The getter's two sites sit inside
+-- that match. Every other site is FOUND, not assumed: each kind of instruction is searched for
+-- in a window around the match (the flying function, GetScore, the ctor), and the window must
+-- hold exactly as many copies as there are sites of that kind. So the code may move around
+-- between builds -- the first version of this file hardcoded each site's distance from the
+-- match, and one update shifting them by 0x120 was enough to kill it. What has to hold, and
+-- fails safely when it does not:
 --
 --   * The pattern must still match. It deliberately covers the 15 bytes of alignment padding
 --     ahead of the getter, so a build that leaves fewer bytes there simply stops matching --
---     bitfix logs `scan results: [[]]` in bitfix.txt and this file writes nothing.
---   * The other 13 sites must still sit at the same distance from it. If the game shifts them
---     relative to each other, the expected bytes at those offsets no longer match. EVERY site
---     is read back and checked FIRST; one mismatch prints which site and returns without
---     writing anything at all. There is no partial application -- which matters, because
---     raising the cap without the bounds handling is exactly the bug this file exists to avoid.
+--     bitfix logs `scan results: [[]]` in bitfix.txt and this file writes nothing. It stops
+--     before the getter's RIP displacement, which changes with every build.
+--   * Each window must hold exactly the expected number of each instruction. One more (the
+--     game added a similar line nearby) or one fewer (the code changed) prints which and
+--     returns without writing anything at all. There is no partial application -- which
+--     matters, because raising the cap without the bounds handling is exactly the bug this file
+--     exists to avoid.
 --
--- So a stale offset degrades to a silent no-op plus a line in bitfix.txt, never a wild write.
+-- So a changed game degrades to a silent no-op plus a line in bitfix.txt, never a wild write.
 -- If aggro stops feeling different after a game update, read that log.
 --
 -- Not covered on purpose: UCustomObjectAttackerPositioning / UEscortMuleAttackerPositioning
@@ -114,36 +118,35 @@ local function bytes(hex)
     return t
 end
 
---- { offset-from-the-match, expected, replacement, description }. Same length either way -- every
---- rewrite fits in place, so nothing here shifts an address or a branch. Trailing comments are the
---- absolute addresses on FSD CL-150580, for disassembler navigation only. Offsets re-derived
---- for CL-154534: the flying and score sites moved -0x120, the ctor +0x90, the anchor not at all.
-local SITES = {
+--- Sites inside the matched pattern: { offset-from-the-match, expected, replacement, description }.
+local FIXED = {
     -- The ground getter: mask the slot to the 32-entry table (see the diagram above).
-    { 0x3, 'CC CC CC CC CC CC CC CC CC CC CC CC',     -- 1415482D4
+    { 0x3, 'CC CC CC CC CC CC CC CC CC CC CC CC',
         '41 83 E1 1F F3 0F 10 54 24 28 EB 06', 'ground getter head' },
-    { 0xF, 'F3 0F 10 54 24 28',                       -- 1415482E0
-        'EB F2 0F 1F 40 00', 'ground getter entry' },
+    { 0xF, 'F3 0F 10 54 24 28', 'EB F2 0F 1F 40 00', 'ground getter entry' },
+}
 
-    -- GetFlyingAttackerPosition: pin its slot bounds to the flying table's real length.
-    { 0x96C4, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 1' },  -- 141551AB5
-    { 0x9862, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 2' },  -- 141551C53
-    { 0x99F6, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 3' },  -- 141551DE7
-    { 0x9B96, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 4' },  -- 141551F87
-    { 0x9C78, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 5' },  -- 141552069
-    { 0x9D63, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 6' },  -- 141552154
-    { 0x9E4E, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 7' },  -- 14155223F
-    { 0x9F73, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 8' },  -- 141552364
-    { 0xA09E, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 9' },  -- 14155248F
+--- Sites found by scanning: every copy of `old` in [match+from, match+to) is rewritten to `new`,
+--- and there must be exactly `count` of them. The windows are wide (each function sat well inside
+--- its window on CL-150580 and on CL-158958, two updates later, where the code had moved by 0x120); `count` is what
+--- keeps them honest. %s becomes MAX_ATTACKERS, little-endian.
+local SCANNED = {
+    -- GetFlyingAttackerPosition: pin its nine slot bounds to the flying table's real length.
+    { from = 0x6000, to = 0xB800, count = 3, what = 'flying bound (cmp ebx)',
+        old = '3B 9F B4 00 00 00',    new = '81 FB 20 00 00 00' },
+    { from = 0x6000, to = 0xB800, count = 2, what = 'flying bound (mov eax)',
+        old = '8B 87 B4 00 00 00',    new = 'B8 20 00 00 00 90' },
+    { from = 0x6000, to = 0xB800, count = 4, what = 'flying bound (mov r12d)',
+        old = '44 8B A7 B4 00 00 00', new = '41 BC 20 00 00 00 90' },
 
-    -- GetScore: the target-attractiveness falloff, which otherwise zeroes out at 32 attackers
-    -- and quietly re-imposes the cap. %s becomes MAX_ATTACKERS, little-endian.
-    { 0xBE97, 'BF 20 00 00 00',       'BF %s',                'score falloff (alive)' }, -- 141554288
-    { 0xBEF9, 'BF 20 00 00 00',       'BF %s',                'score falloff (downed)' }, -- 1415542EA
+    -- GetScore: the target-attractiveness falloff (alive and downed branches), which otherwise
+    -- zeroes out at 32 attackers and quietly re-imposes the cap.
+    { from = 0xB000, to = 0xD800, count = 2, what = 'score falloff',
+        old = 'BF 20 00 00 00',       new = 'BF %s' },
 
-    -- The ctor's default. Behind the anchor, hence the negative offset.
-    { -0xDDDF, 'C7 87 B4 00 00 00 20 00 00 00', -- 14153A462
-        'C7 87 B4 00 00 00 %s', 'MaxAttackers default' },
+    -- The ctor's default, behind the match.
+    { from = -0x14000, to = 0, count = 1, what = 'MaxAttackers default',
+        old = 'C7 87 B4 00 00 00 20 00 00 00', new = 'C7 87 B4 00 00 00 %s' },
 }
 
 return {
@@ -164,26 +167,43 @@ return {
                 return
             end
 
+            local function imm(hex) -- little-endian imm32 from MAX_ATTACKERS
+                if not hex:find('%%s') then return hex end
+                return hex:format(('%02X %02X %02X %02X'):format(
+                    cap % 256, math.floor(cap / 256) % 256,
+                    math.floor(cap / 65536) % 256, math.floor(cap / 16777216) % 256))
+            end
+            local function at(addr, seq)
+                for i = 1, #seq do
+                    if ctx[addr + i - 1] ~= seq[i] then return false end
+                end
+                return true
+            end
+
             -- Verify EVERY site before writing ANY of them: a half-applied patch would raise
             -- the cap without the bounds handling, which is worse than doing nothing.
-            for _, site in ipairs(SITES) do
-                local addr, old, hex, what = anchor + site[1], bytes(site[2]), site[3], site[4]
-
-                if hex:find('%%s') then -- little-endian imm32 from MAX_ATTACKERS
-                    hex = hex:format(('%02X %02X %02X %02X'):format(
-                        cap % 256, math.floor(cap / 256) % 256,
-                        math.floor(cap / 65536) % 256, math.floor(cap / 16777216) % 256))
+            for _, site in ipairs(FIXED) do
+                local addr = anchor + site[1]
+                if not at(addr, bytes(site[2])) then
+                    print(('aggro_cap: %s at %X unrecognised, NOTHING written'):format(site[4], addr))
+                    return
                 end
-                local new = bytes(hex)
-
-                for i = 1, #old do
-                    if ctx[addr + i - 1] ~= old[i] then
-                        print(('aggro_cap: %s at %X unrecognised (byte %d), NOTHING written')
-                            :format(what, addr, i))
-                        return
-                    end
+                plan[#plan + 1] = { addr = addr, new = bytes(site[3]) }
+            end
+            for _, g in ipairs(SCANNED) do
+                local old, found = bytes(g.old), {}
+                local first = old[1]
+                for addr = anchor + g.from, anchor + g.to - #old do
+                    if ctx[addr] == first and at(addr, old) then found[#found + 1] = addr end
                 end
-                plan[#plan + 1] = { addr = addr, new = new }
+                if #found ~= g.count then
+                    print(('aggro_cap: %s found %d times near %X, expected %d, NOTHING written')
+                        :format(g.what, #found, anchor, g.count))
+                    return
+                end
+                for _, addr in ipairs(found) do
+                    plan[#plan + 1] = { addr = addr, new = bytes(imm(g.new)) }
+                end
             end
 
             for _, w in ipairs(plan) do

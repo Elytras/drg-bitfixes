@@ -23,11 +23,10 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 | `chunk_spawn_crash_fix.lua` | **Chunk Spawn Crash Fix.** "access violation (write of 0x248)" in `AResourceChunk::SpawnChunk` when a resource chunk fails to spawn (often a mod pointing at a chunk class that is not installed). |
 | `critter_cull_crash_fix.lua` | **Critter Cull Crash Fix.** A host-side crash, ACCESS_VIOLATION reading 0x130, blamed on flying critters. |
 | `aggro_cap.lua` | **Aggro Cap.** Raises how many enemies may attack one target at once, without the out-of-bounds read that a plain cap bump gives. |
-| `execInstanceVariable_bypass.lua` | For modders: lets Kismet bytecode read a property owned by a struct (used by Blueprint mods compiled outside the editor). Players do not need it. |
 
 ## Status against the current game build
 
-Checked on 2026-11-11 against FSD CL-154534 by searching the current `FSD-Win64-Shipping.exe` for each
-patch's pattern and checking every byte each patch verifies before it writes: all six apply.
-`aggro_cap.lua` was re-derived for this build (its sites moved; its pattern no longer pins an address
-offset that changes between builds).
+Checked on 2026-11-11 against FSD CL-158958 by searching the current `FSD-Win64-Shipping.exe` for each
+patch's pattern and checking every byte each patch verifies before it writes: all five apply.
+`aggro_cap.lua` now finds its sites by scanning near its match instead of at fixed distances, so it
+survives the code moving between builds (fixed distances are what broke it on CL-158958).
