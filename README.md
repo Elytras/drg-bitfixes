@@ -27,8 +27,7 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 
 ## Status against the current game build
 
-Checked on 2026-11-10 by searching the current `FSD-Win64-Shipping.exe` for each patch's pattern:
-
-- Match, so they apply: terrain memory, carve, chunk spawn, critter cull, execInstanceVariable.
-- **`aggro_cap.lua` does not match** the current build: one byte of its pattern pins an address offset
-  that the last game update moved. It writes nothing until it is re-derived.
+Checked on 2026-11-11 against FSD CL-154534 by searching the current `FSD-Win64-Shipping.exe` for each
+patch's pattern and checking every byte each patch verifies before it writes: all six apply.
+`aggro_cap.lua` was re-derived for this build (its sites moved; its pattern no longer pins an address
+offset that changes between builds).

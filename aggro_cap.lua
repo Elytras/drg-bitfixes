@@ -61,7 +61,7 @@
 -- ON SURVIVING A GAME UPDATE. There are no image RVAs in this file. The only address it knows
 -- at runtime is ctx:address() -- where the pattern matched -- and all 14 sites are signed
 -- offsets from that. (The absolute addresses in the comments are navigation aids for opening
--- the exe in a disassembler at the build this was written against, FSD CL-150580; nothing in
+-- the exe in a disassembler at the build this was first written against, FSD CL-150580; nothing in
 -- the code reads them.) Two things then have to hold, and both fail safely:
 --
 --   * The pattern must still match. It deliberately covers the 15 bytes of alignment padding
@@ -106,7 +106,7 @@ local PATTERN =
     '49 63 C1 ' ..                                     -- movsxd rax, r9d         (the slot)
     '4C 8D 0C 40 ' ..                                  -- lea    r9, [rax+rax*2]  (3 floats/entry)
     '0F 28 C2 ' ..                                     -- movaps xmm0, xmm2
-    '48 8B 05 B9'                                      -- mov    rax, [rip+..]    (the ring table)
+    '48 8B 05'                                         -- mov    rax, [rip+..]    (the ring table)
 
 local function bytes(hex)
     local t = {}
@@ -116,7 +116,8 @@ end
 
 --- { offset-from-the-match, expected, replacement, description }. Same length either way -- every
 --- rewrite fits in place, so nothing here shifts an address or a branch. Trailing comments are the
---- absolute addresses on FSD CL-150580, for disassembler navigation only.
+--- absolute addresses on FSD CL-150580, for disassembler navigation only. Offsets re-derived
+--- for CL-154534: the flying and score sites moved -0x120, the ctor +0x90, the anchor not at all.
 local SITES = {
     -- The ground getter: mask the slot to the 32-entry table (see the diagram above).
     { 0x3, 'CC CC CC CC CC CC CC CC CC CC CC CC',     -- 1415482D4
@@ -125,23 +126,23 @@ local SITES = {
         'EB F2 0F 1F 40 00', 'ground getter entry' },
 
     -- GetFlyingAttackerPosition: pin its slot bounds to the flying table's real length.
-    { 0x97E4, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 1' },  -- 141551AB5
-    { 0x9982, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 2' },  -- 141551C53
-    { 0x9B16, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 3' },  -- 141551DE7
-    { 0x9CB6, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 4' },  -- 141551F87
-    { 0x9D98, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 5' },  -- 141552069
-    { 0x9E83, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 6' },  -- 141552154
-    { 0x9F6E, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 7' },  -- 14155223F
-    { 0xA093, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 8' },  -- 141552364
-    { 0xA1BE, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 9' },  -- 14155248F
+    { 0x96C4, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 1' },  -- 141551AB5
+    { 0x9862, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 2' },  -- 141551C53
+    { 0x99F6, '8B 87 B4 00 00 00',    'B8 20 00 00 00 90',    'flying bound 3' },  -- 141551DE7
+    { 0x9B96, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 4' },  -- 141551F87
+    { 0x9C78, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 5' },  -- 141552069
+    { 0x9D63, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 6' },  -- 141552154
+    { 0x9E4E, '44 8B A7 B4 00 00 00', '41 BC 20 00 00 00 90', 'flying bound 7' },  -- 14155223F
+    { 0x9F73, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 8' },  -- 141552364
+    { 0xA09E, '3B 9F B4 00 00 00',    '81 FB 20 00 00 00',    'flying bound 9' },  -- 14155248F
 
     -- GetScore: the target-attractiveness falloff, which otherwise zeroes out at 32 attackers
     -- and quietly re-imposes the cap. %s becomes MAX_ATTACKERS, little-endian.
-    { 0xBFB7, 'BF 20 00 00 00',       'BF %s',                'score falloff (alive)' }, -- 141554288
-    { 0xC019, 'BF 20 00 00 00',       'BF %s',                'score falloff (downed)' }, -- 1415542EA
+    { 0xBE97, 'BF 20 00 00 00',       'BF %s',                'score falloff (alive)' }, -- 141554288
+    { 0xBEF9, 'BF 20 00 00 00',       'BF %s',                'score falloff (downed)' }, -- 1415542EA
 
     -- The ctor's default. Behind the anchor, hence the negative offset.
-    { -0xDE6F, 'C7 87 B4 00 00 00 20 00 00 00', -- 14153A462
+    { -0xDDDF, 'C7 87 B4 00 00 00 20 00 00 00', -- 14153A462
         'C7 87 B4 00 00 00 %s', 'MaxAttackers default' },
 }
 
