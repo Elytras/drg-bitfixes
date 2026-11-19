@@ -64,14 +64,15 @@ end
 
 -- Each pool: its stock limit and reserve, the patched ones, and where its compactor's budget sits
 -- relative to its compactor pattern (test rXb,rXb; jne; cmp ebp,1F4h; jge; cmp r14d,1388h; jge).
+-- The flag register in the test differs between pools and builds, so it is not checked.
 local POOLS = {
     vertex = { tag = "vertex_pool", elem = 6, oldMax = 0x0A000000, oldReserve = 0x3C000000,
                budgetVerts = 0x100000, budgetAt = -0x1E6,
-               budgetBytes = { 0x45, 0x84, 0xE4, 0x75, 0x19, 0x81, 0xFD, 0xF4, 0x01, 0x00, 0x00, 0x0F, 0x8D,
+               budgetBytes = { 0x45, 0x84, -1, 0x75, 0x19, 0x81, 0xFD, 0xF4, 0x01, 0x00, 0x00, 0x0F, 0x8D,
                                -1, -1, -1, -1, 0x41, 0x81, 0xFE, 0x88, 0x13, 0x00, 0x00, 0x0F, 0x8D } },
     planes = { tag = "planes_pool", elem = 16, oldMax = 0x04000000, oldReserve = 0x40000000,
                budgetVerts = 0x60000, budgetAt = -0x1FB,
-               budgetBytes = { 0x45, 0x84, 0xFF, 0x75, 0x19, 0x81, 0xFD, 0xF4, 0x01, 0x00, 0x00, 0x0F, 0x8D,
+               budgetBytes = { 0x45, 0x84, -1, 0x75, 0x19, 0x81, 0xFD, 0xF4, 0x01, 0x00, 0x00, 0x0F, 0x8D,
                                -1, -1, -1, -1, 0x41, 0x81, 0xFE, 0x88, 0x13, 0x00, 0x00, 0x0F, 0x8D } },
 }
 if not BAD_SETTING then
@@ -155,10 +156,19 @@ local V, P = POOLS.vertex, POOLS.planes
 return {
     -- DeepCSGPoolSet ctor, pool-VertexPositions: lea rcx,[rbx+3A0h]; mov edx,3C000000h; ...
     { pattern = '48 8D 8B A0 03 00 00 BA 00 00 00 3C 48 8B 00 4C 89 61 20', match = reserve(V, 0x08) },
-    -- ExpandingArray<VertexPositions>::Grow: cmp edx,0A000000h; jl; lea rax,[rip]; mov [rsp+28h],0A000000h
+    -- Each limit check comes in two shapes, one per build; on any one build exactly one of the pair
+    -- matches. CL-158958 (release) passes the message's MAXSIZE on the stack (mov [rsp+28h],imm),
+    -- CL-165596 (experimental) in a register (mov r9d,imm).
+    -- ExpandingArray<VertexPositions>::Grow: cmp edx,0A000000h; jl; mov r9d,0A000000h; lea r8,[rip]
+    { pattern = '8B DA 48 8B F9 81 FA 00 00 00 0A 7C ?? 41 B9 00 00 00 0A 4C 8D 05',
+      match = grow(V, 0x07, 0x0F) },
+    -- the same, CL-158958: cmp edx,0A000000h; jl; lea rax,[rip]; mov [rsp+28h],0A000000h
     { pattern = '8B DA 48 8B F9 81 FA 00 00 00 0A 7C 37 48 8D 05 ?? ?? ?? ?? C7 44 24 28 00 00 00 0A',
       match = grow(V, 0x07, 0x18) },
-    -- DeepArrayPool<VertexPositions>::Compact: cmp esi,r10d; jle; cmp esi,0A000000h; jl; ...
+    -- DeepArrayPool<VertexPositions>::Compact: cmp esi,r10d; jle; cmp esi,0A000000h; jl; mov r9d,...
+    { pattern = '41 3B F2 7E ?? 81 FE 00 00 00 0A 7C ?? 41 B9 00 00 00 0A 4C 8D 05',
+      match = compactor(V, 0x07, 0x0F) },
+    -- the same, CL-158958 (a long jle)
     { pattern = '41 3B F2 0F 8E ?? ?? ?? ?? 81 FE 00 00 00 0A 7C 3B 48 8D 05 ?? ?? ?? ?? C7 44 24 28 00 00 00 0A',
       match = compactor(V, 0x0B, 0x1C) },
 
@@ -166,12 +176,22 @@ return {
     { pattern = '48 8D 4B 10 45 33 E4 BA 00 00 00 40 48 8B 00 4C 89 61 20', match = reserve(P, 0x08) },
     -- ExpandingArray<FDeepCSGPlane>::Grow: the same shape as two other grows, told apart by its
     -- 16-byte stride (shl rdx,4) after the commit size is rounded
+    { pattern = '8B DA 48 8B F9 81 FA 00 00 00 04 7C ?? 41 B9 00 00 00 04 4C 8D 05 ?? ?? ?? ?? '
+             .. 'BA 84 00 00 00 48 8D 0D ?? ?? ?? ?? E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? '
+             .. '8D 83 FF FF 03 00 99 81 E2 FF FF 03 00 8D 1C 02 48 63 57 0C '
+             .. '81 E3 00 00 FC FF 8B CB 2B CA 48 C1 E2 04',
+      match = grow(P, 0x07, 0x0F) },
+    -- the same, CL-158958
     { pattern = '8B DA 48 8B F9 81 FA 00 00 00 04 7C 37 48 8D 05 ?? ?? ?? ?? C7 44 24 28 00 00 00 04 '
              .. '41 B9 01 00 00 00 48 89 44 24 20 4C 8D 05 ?? ?? ?? ?? BA 84 00 00 00 48 8D 0D ?? ?? ?? ?? '
              .. 'E8 ?? ?? ?? ?? E8 ?? ?? ?? ?? 8D 83 FF FF 03 00 99 81 E2 FF FF 03 00 8D 1C 02 48 63 57 0C '
              .. '81 E3 00 00 FC FF 8B CB 2B CA 48 C1 E2 04',
       match = grow(P, 0x07, 0x18) },
     -- DeepArrayPool<FDeepCSGPlane>::Compact: movsxd rsi,[rdi+0FCh] (pool-Faces' has a plain mov); ...
+    { pattern = '48 63 B7 FC 00 00 00 3B 77 08 0F 8E ?? ?? ?? ?? 44 8B 57 0C 41 3B F2 7E ?? 81 FE 00 00 00 04 '
+             .. '7C ?? 41 B9 00 00 00 04 4C 8D 05',
+      match = compactor(P, 0x1B, 0x23) },
+    -- the same, CL-158958
     { pattern = '48 63 B7 FC 00 00 00 3B 77 08 0F 8E ?? ?? ?? ?? 44 8B 57 0C 41 3B F2 7E ?? 81 FE 00 00 00 04 '
              .. '7C 3B 48 8D 05 ?? ?? ?? ?? C7 44 24 28 00 00 00 04',
       match = compactor(P, 0x1B, 0x2C) },

@@ -26,7 +26,15 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 
 ## Status against the current game build
 
-Checked on 2026-11-11 against FSD CL-158958 by searching the current `FSD-Win64-Shipping.exe` for each
-patch's pattern and checking every byte each patch verifies before it writes: all five apply.
-`aggro_cap.lua` now finds its sites by scanning near its match instead of at fixed distances, so it
-survives the code moving between builds (fixed distances are what broke it on CL-158958).
+Checked on 2026-11-19 against FSD CL-165596 (the experimental branch) by running each file's own Lua
+over the game's `FSD-Win64-Shipping.exe` and checking what it writes: all five apply.
+`aggro_cap.lua`, `carve_crash_fix.lua`, `chunk_spawn_crash_fix.lua` and `critter_cull_crash_fix.lua`
+apply unchanged. `terrain_memory_crash_fix.lua` needed new patterns: this build passes the error
+message's limit in a register (`mov r9d`) where CL-158958 put it on the stack, so the four limit
+checks no longer matched and only the two reserves were raised. It now carries both shapes of each
+limit check; on either build exactly one of each pair matches. The compactor budgets did not move.
+
+On CL-158958 (the current release) all five applied when checked on 2026-11-11, and the release
+patterns of the terrain fix are kept unchanged, so it still covers release; this check could not rerun
+on that exe, which the experimental install replaced. `aggro_cap.lua` finds its sites by scanning near
+its match instead of at fixed distances, so it survives the code moving between builds.
