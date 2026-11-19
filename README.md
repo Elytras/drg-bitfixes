@@ -23,11 +23,12 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 | `chunk_spawn_crash_fix.lua` | **Chunk Spawn Crash Fix.** "access violation (write of 0x248)" in `AResourceChunk::SpawnChunk` when a resource chunk fails to spawn (often a mod pointing at a chunk class that is not installed). |
 | `critter_cull_crash_fix.lua` | **Critter Cull Crash Fix.** A host-side crash, ACCESS_VIOLATION reading 0x130, blamed on flying critters. |
 | `aggro_cap.lua` | **Aggro Cap.** Raises how many enemies may attack one target at once, without the out-of-bounds read that a plain cap bump gives. |
+| `increased_players_fix.lua` | **Increased Players Fix.** For lobbies that a player-count mod raises above four players: the game's telemetry state updater, which some of those mods crash in, returns at once. Telemetry is all it feeds; nothing in play changes. |
 
 ## Status against the current game build
 
 Checked on 2026-11-19 against FSD CL-165596 (the experimental branch) by running each file's own Lua
-over the game's `FSD-Win64-Shipping.exe` and checking what it writes: all five apply.
+over the game's `FSD-Win64-Shipping.exe` and checking what it writes: all six apply.
 `aggro_cap.lua`, `carve_crash_fix.lua`, `chunk_spawn_crash_fix.lua` and `critter_cull_crash_fix.lua`
 apply unchanged. `terrain_memory_crash_fix.lua` needed new patterns: this build passes the error
 message's limit in a register (`mov r9d`) where CL-158958 put it on the stack, so the four limit
