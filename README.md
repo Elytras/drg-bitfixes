@@ -24,6 +24,7 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 | `critter_cull_crash_fix.lua` | **Critter Cull Crash Fix.** A host-side crash, ACCESS_VIOLATION reading 0x130, blamed on flying critters. |
 | `aggro_cap.lua` | **Aggro Cap.** Raises how many enemies may attack one target at once, without the out-of-bounds read that a plain cap bump gives. |
 | `increased_players_fix.lua` | **Increased Players Fix.** For lobbies that a player-count mod raises above four players: the game's telemetry state updater, which some of those mods crash in, returns at once. Telemetry is all it feeds; nothing in play changes. |
+| `terrain_spawn_crash_fix.lua` | **Terrain Spawn Crash Fix.** An access violation reading 0x3 at `FSD-Win64-Shipping.exe+0x1578230` mid-mission, on the experimental build CL-166125: while the game picks free spots on the cave surface (for enemy spawns), it reads a terrain chunk whose triangle group has no index list. The group is skipped instead. |
 
 ## Status against the current game build
 
@@ -39,3 +40,7 @@ On CL-158958 (the current release) all five applied when checked on 2026-11-11, 
 patterns of the terrain fix are kept unchanged, so it still covers release; this check could not rerun
 on that exe, which the experimental install replaced. `aggro_cap.lua` finds its sites by scanning near
 its match instead of at fixed distances, so it survives the code moving between builds.
+
+`terrain_spawn_crash_fix.lua` was checked on 2026-11-23 against CL-166125 (experimental) the same way: it
+matches three copies of the sampler loop and guards each. It has not been checked against CL-158958 (release).
+The other six were last checked on CL-165596, as above.
