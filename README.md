@@ -28,6 +28,11 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 
 ## Status against the current game build
 
+Checked on 2026-11-25 against FSD CL-167548 (the experimental branch), the same way: all seven apply. Every pattern
+matches as often as it should (the terrain memory fix matches one of each pair of limit-check shapes, as on
+CL-165596), every site passes its byte check, and none prints an "unrecognised" or "NOTHING written" line. Only
+`aggro_cap.lua` needed a change, described below.
+
 Checked on 2026-11-19 against FSD CL-165596 (the experimental branch) by running each file's own Lua
 over the game's `FSD-Win64-Shipping.exe` and checking what it writes: all six apply.
 `aggro_cap.lua`, `carve_crash_fix.lua`, `chunk_spawn_crash_fix.lua` and `critter_cull_crash_fix.lua`
