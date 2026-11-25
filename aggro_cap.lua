@@ -56,7 +56,7 @@
 --   anchor+13  ]              ->  jmp    entry+6            EB 06
 --   anchor+15  movss xmm2,..  ->  jmp    anchor+3           EB F2
 --   anchor+17                 ->  nop                       0F 1F 40 00   (unreachable)
---   anchor+21  addss xmm2,[rcx+0F8h] ... untouched, same addresses
+--   anchor+21  addss xmm2,[rcx+0F8h] ... untouched, same addresses (the field is +0x100 on CL-167548)
 --
 -- ON SURVIVING A GAME UPDATE. There are no image RVAs in this file. The only address it knows
 -- at runtime is ctx:address() -- where the pattern matched. The getter's two sites sit inside
@@ -70,7 +70,14 @@
 --   * The pattern must still match. It deliberately covers the 15 bytes of alignment padding
 --     ahead of the getter, so a build that leaves fewer bytes there simply stops matching --
 --     bitfix logs `scan results: [[]]` in bitfix.txt and this file writes nothing. It stops
---     before the getter's RIP displacement, which changes with every build.
+--     before the getter's RIP displacement, which changes with every build, and leaves the
+--     personal-sphere field's displacement open: CL-167548 moved it from 0xF8 to 0x100.
+--   * The ctor's `C7 87 B4 00 00 00 20 00 00 00` is the dword store on earlier builds. On
+--     CL-167548 the game added a BonusAttackers int beside MaxAttackers and the two stores
+--     merged into `48 C7 87 B4 00 00 00 20 00 00 00` (a qword store, BonusAttackers = 0). The
+--     same ten bytes sit inside it one byte in, so the rewrite still lands on the immediate.
+--     A patch that writes at a fixed offset from the old instruction's start lands on the
+--     displacement instead and crashes the game at startup.
 --   * Each window must hold exactly the expected number of each instruction. One more (the
 --     game added a similar line nearby) or one fewer (the code changed) prints which and
 --     returns without writing anything at all. There is no partial application -- which
@@ -106,7 +113,7 @@ local MAX_ATTACKERS = 64
 local PATTERN =
     'CC CC CC CC CC CC CC CC CC CC CC CC CC CC CC ' .. -- 15 bytes of alignment padding
     'F3 0F 10 54 24 28 ' ..                            -- movss  xmm2, [rsp+28h]  (attacker radius)
-    'F3 0F 58 91 F8 00 00 00 ' ..                      -- addss  xmm2, [rcx+0F8h] (personal sphere)
+    'F3 0F 58 91 ?? ?? 00 00 ' ..                      -- addss  xmm2, [rcx+..]   (personal sphere: 0F8h, 100h on CL-167548)
     '49 63 C1 ' ..                                     -- movsxd rax, r9d         (the slot)
     '4C 8D 0C 40 ' ..                                  -- lea    r9, [rax+rax*2]  (3 floats/entry)
     '0F 28 C2 ' ..                                     -- movaps xmm0, xmm2

@@ -41,6 +41,11 @@ patterns of the terrain fix are kept unchanged, so it still covers release; this
 on that exe, which the experimental install replaced. `aggro_cap.lua` finds its sites by scanning near
 its match instead of at fixed distances, so it survives the code moving between builds.
 
+`aggro_cap.lua` was checked on 2026-11-25 against CL-167548 (experimental) the same way. Its pattern stopped
+matching because a field it reads moved (0xF8 to 0x100); that displacement is now a wildcard, and every site
+is found in the expected count. The same build turned the constructor's MaxAttackers store into a wider
+instruction: older aggro-cap patches that write at a fixed offset from it now crash the game at startup.
+
 `terrain_spawn_crash_fix.lua` was checked on 2026-11-23 against CL-166125 (experimental) the same way: it
 matches three copies of the sampler loop and guards each. It has not been checked against CL-158958 (release).
 The other six were last checked on CL-165596, as above.
