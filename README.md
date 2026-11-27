@@ -28,6 +28,10 @@ Each file's header says what it fixes, how, and which lines `bitfix.txt` should 
 
 ## Status against the current game build
 
+Checked on 2026-11-27 against FSD CL-168013 (the experimental branch), the same way: all seven apply
+unchanged, the bitfix tests pass, and none prints "unrecognised" or
+"NOTHING written".
+
 Checked on 2026-11-25 against FSD CL-167548 (the experimental branch), the same way: all seven apply. Every pattern
 matches as often as it should (the terrain memory fix matches one of each pair of limit-check shapes, as on
 CL-165596), every site passes its byte check, and none prints an "unrecognised" or "NOTHING written" line. Only
